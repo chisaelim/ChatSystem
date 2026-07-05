@@ -48,6 +48,12 @@ class AuthController extends Controller
             ]);
         }
 
+        if ($user->status === 'DISABLED') {
+            throw ValidationException::withMessages([
+                'email' => 'Your account has been disabled. Please contact support.',
+            ]);
+        }
+
         if (!Hash::check($request->password, $user->password)) {
             throw ValidationException::withMessages([
                 'password' => 'Password does not match.',
