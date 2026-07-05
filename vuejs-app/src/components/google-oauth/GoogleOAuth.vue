@@ -21,6 +21,12 @@ onMounted(async () => {
       });
     }
 
+    if (error === 'account_disabled') {
+      return MessageModal({ icon: "error", title: "Error", text: "Your account has been disabled. Please contact support." }, () => {
+        return router.replace({ name: 'auth.signin' });
+      });
+    }
+
     const token = route.query.token;
     const response = await apiGoogleOAuthExchangeToken(token);
     userStore.setState(response.data.user);
