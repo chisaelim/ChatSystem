@@ -18,6 +18,10 @@ export function apiUpdateUser(id, data) {
   return axios.put(APP_API_URL + `/manage/users/update/${id}`, data);
 }
 
+export function apiToggleUserStatus(id) {
+  return axios.patch(APP_API_URL + `/manage/users/toggle-status/${id}`);
+}
+
 export function apiDeleteUser(id) {
   return axios.delete(APP_API_URL + `/manage/users/delete/${id}`);
 }

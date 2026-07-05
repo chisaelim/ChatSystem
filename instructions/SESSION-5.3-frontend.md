@@ -1,3 +1,87 @@
+# ChatSystem — Frontend user status display and toggle with disabled account error handling
+
+## Table of Contents
+
+- [What Changed in Session 5.3-frontend](#what-changed-in-session-53-frontend)
+- [File Contents](#file-contents)
+  - [vuejs-app/src/functions/api/user.js](#vuejs-appsrcfunctionsapiuserjs)
+  - [vuejs-app/src/components/pages/User.vue](#vuejs-appsrccomponentspagesuservue)
+  - [vuejs-app/src/components/google-oauth/GoogleOAuth.vue](#vuejs-appsrccomponentsgoogle-oauthgoogleoauthvue)
+- [How Each File Works](#how-each-file-works)
+  - [User API helpers — new toggle status endpoint integration](#user-api-helpers--new-toggle-status-endpoint-integration)
+  - [User page — status column display and toggle functionality](#user-page--status-column-display-and-toggle-functionality)
+  - [Google OAuth component — disabled account error handling](#google-oauth-component--disabled-account-error-handling)
+- [Common Commands](#common-commands)
+
+---
+
+## What Changed in Session 5.3-frontend
+
+Session 5.2 implemented backend user account status management with account disabling and authentication blocking. Session 5.3-frontend completes the feature by exposing the user status state in the frontend, adding a new `apiToggleUserStatus` helper function that calls the backend toggle endpoint, updating the User management page to display a Status column with color-coded badges showing ENABLED in green and DISABLED in red, adding a toggle status button in the user table actions that switches between enable/disable based on the current account state with appropriate icons and styling, implementing the `toggleUserStatus` function to call the API and update the user list reactively, extending the GoogleOAuth component to handle the `account_disabled` error case when disabled users attempt OAuth authentication and redirecting them to the signin page with a clear error message.
+
+| Area | Session 5.2 | Session 5.3-frontend |
+|---|---|---|
+| User API functions | No toggle endpoint wrapper | `apiToggleUserStatus(id)` PATCH request to `/manage/users/toggle-status/{id}` |
+| Status visibility in table | Status field not exposed in responses | Status displayed as color-coded badge column (green=ENABLED, red=DISABLED) |
+| User action buttons | Delete and edit buttons only | Added toggle status button with dynamic icon (ban for disable, check for enable) |
+| Status toggle workflow | N/A | Admin clicks toggle button → API call → user list updates with new status |
+| OAuth disabled account handling | No frontend handling for `account_disabled` error | GoogleOAuth catches error and shows error modal, redirects to signin |
+| Account state persistence | No frontend persistence of status | Status field included in all user responses, reflected in table |
+
+`vuejs-app/src/functions/api/user.js` existed previously and was edited manually to add the `apiToggleUserStatus` function. `vuejs-app/src/components/pages/User.vue` existed previously and was edited manually to add the Status column definition with badge styling, add status property destructuring in the action button cell, add the toggle status button with conditional styling, and implement the `toggleUserStatus` function. `vuejs-app/src/components/google-oauth/GoogleOAuth.vue` existed previously and was edited manually to add error handling for the `account_disabled` error case.
+
+---
+
+## File Contents
+
+The labels below each heading tell you what action to take:
+- **Edited manually** — the file already exists from a previous session; paste the block to replace its contents.
+
+Follow the sections in order from top to bottom.
+
+---
+
+### `vuejs-app/src/functions/api/user.js`
+
+> **Edited manually** — add the `apiToggleUserStatus` function to wrap the backend toggle-status endpoint.
+
+```js
+import axios from 'axios';
+
+const APP_API_URL = import.meta.env.VITE_APP_API_URL;
+
+export function apiGetUsers(params = {}) {
+  return axios.get(APP_API_URL + '/manage/users', { params });
+}
+
+export function apiReadUser(id) {
+  return axios.get(APP_API_URL + `/manage/users/read/${id}`);
+}
+
+export function apiCreateUser(data) {
+  return axios.post(APP_API_URL + `/manage/users/create`, data);
+}
+
+export function apiUpdateUser(id, data) {
+  return axios.put(APP_API_URL + `/manage/users/update/${id}`, data);
+}
+
+export function apiToggleUserStatus(id) {
+  return axios.patch(APP_API_URL + `/manage/users/toggle-status/${id}`);
+}
+
+export function apiDeleteUser(id) {
+  return axios.delete(APP_API_URL + `/manage/users/delete/${id}`);
+}
+```
+
+---
+
+### `vuejs-app/src/components/pages/User.vue`
+
+> **Edited manually** — update the User page to import `apiToggleUserStatus`, add Status column to the table, add toggle status button to actions, and implement the `toggleUserStatus` function.
+
+```vue
 <template>
   <div class="content-wrapper" style="min-height: 1416px">
     <section class="content-header">
@@ -347,3 +431,88 @@ function onUserDelete(id) {
   users.value = users.value.filter((u) => u.id !== id);
 }
 </script>
+```
+
+---
+
+### `vuejs-app/src/components/google-oauth/GoogleOAuth.vue`
+
+> **Edited manually** — add error handling for the `account_disabled` error case in the GoogleOAuth callback handler.
+
+```vue
+<template></template>
+<script setup>
+import { onMounted } from 'vue';
+import { useRoute } from 'vue-router';
+import { LoadingModal, MessageModal, CloseModal } from "@/functions/swal";
+import { apiGoogleOAuthExchangeToken } from "@/functions/api/google-oauth";
+import { useUserStore } from "@/stores/user";
+import { useRouter } from 'vue-router';
+
+const userStore = useUserStore();
+const router = useRouter();
+const route = useRoute();
+
+onMounted(async () => {
+  try {
+    LoadingModal("Processing Google authentication...");
+    const error = route.query.error;
+    if (error === 'google_oauth_failed') {
+      return MessageModal({ icon: "error", title: "Error", text: "Google authentication failed. Please try again." }, () => {
+        return router.replace({ name: 'auth.signin' });
+      });
+    }
+
+    if (error === 'account_disabled') {
+      return MessageModal({ icon: "error", title: "Error", text: "Your account has been disabled. Please contact support." }, () => {
+        return router.replace({ name: 'auth.signin' });
+      });
+    }
+
+    const token = route.query.token;
+    const response = await apiGoogleOAuthExchangeToken(token);
+    userStore.setState(response.data.user);
+    userStore.setSanctumToken(response.data.token);
+    CloseModal();
+    return router.replace({ name: 'dashboard' });
+  } catch (e) {
+    return MessageModal({ icon: "error", title: "Error", text: "Google authentication failed. Please try again." }, () => {
+      return router.replace({ name: 'auth.signin' });
+    });
+  }
+});
+</script>
+```
+
+---
+
+## How Each File Works
+
+### User API helpers — new toggle status endpoint integration
+
+The `apiToggleUserStatus(id)` function wraps a PATCH request to `/manage/users/toggle-status/{id}`, matching the backend route registered in SESSION-5.2. Unlike update or create endpoints, this function requires only the user ID parameter and sends no request body, as the backend toggles the status without additional input. The function returns the updated user object in the response, allowing the frontend to immediately reflect the new status without a page reload.
+
+---
+
+### User page — status column display and toggle functionality
+
+The User.vue component adds a new Status column to the table that renders a Bootstrap badge showing "ENABLED" in green (success class) or "DISABLED" in red (danger class), providing at-a-glance visibility into account states. The Status column uses TanStack Table's cell renderer to conditionally apply badge styling. The action buttons cell now destructures both `id` and `status` from the original row data, enabling the toggle button to determine which action to display. The new toggle status button appears alongside delete and edit buttons, with conditional styling: red background with a ban icon when the account is ENABLED (indicating a disable action), green background with a check icon when ENABLED is false (indicating an enable action). The button's title attribute provides a tooltip showing the action intent. The `toggleUserStatus` function calls `apiToggleUserStatus`, wraps the response in a success message modal, and calls `onUserUpdate` to reactively update the user in the table with the new status.
+
+---
+
+### Google OAuth component — disabled account error handling
+
+The GoogleOAuth component's onMounted hook processes the callback from the Google OAuth redirect. After checking for the `google_oauth_failed` error, it now also checks for the `account_disabled` error parameter that the backend sends when a disabled user attempts OAuth login. If this error is detected, a MessageModal displays the error "Your account has been disabled. Please contact support." and routes back to the signin page when the user dismisses the modal. This matches the user experience of regular signin failures, ensuring disabled users receive consistent error messaging across authentication methods.
+
+---
+
+## Common Commands
+
+```bash
+# No commands needed for this session — all changes are frontend code edits only
+# If developing locally without Docker:
+npm run dev
+
+# If developing in Docker:
+docker exec vuejs npm run dev
+```
