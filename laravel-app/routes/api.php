@@ -4,6 +4,7 @@ use App\Http\Controllers\API\AuthController;
 use App\Http\Controllers\API\BackupController;
 use App\Http\Controllers\API\GoogleOAuthController;
 use App\Http\Controllers\API\UserController;
+use App\Http\Controllers\API\ChatController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/signup', [AuthController::class, 'signup']);
@@ -44,5 +45,10 @@ Route::middleware(['auth:sanctum', 'enabled'])->group(function () {
             Route::get('/download/{filename}', [BackupController::class, 'downloadBackup']);
             Route::delete('/delete/{filename}', [BackupController::class, 'deleteBackup']);
         });
+    });
+
+    Route::prefix('chats')->group(function () {
+        Route::get('/', [ChatController::class, 'getChats']);
+        Route::get('/users', [ChatController::class, 'getChatUsers']);
     });
 });
