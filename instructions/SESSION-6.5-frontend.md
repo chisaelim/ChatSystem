@@ -1,3 +1,48 @@
+# ChatSystem — Frontend sidebar search filtering, pagination, and infinite scroll
+
+## Table of Contents
+
+- [What Changed in Session 6.5](#what-changed-in-session-65)
+- [File Contents](#file-contents)
+  - [vuejs-app/src/components/includes/LeftSidebar.vue](#vuejs-appsccomponentsincludesleftsidebarvue)
+- [How Each File Works](#how-each-file-works)
+- [Common Commands](#common-commands)
+
+---
+
+## What Changed in Session 6.5
+
+Session 6.4-frontend implemented the frontend UI components for displaying chats and available users in the sidebar with datetime utilities and API service module. Session 6.5 enhances the sidebar with real-time search filtering, pagination support, and infinite scroll loading capabilities, transforming the chat and user lists into responsive, dynamically-loaded collections that automatically fetch additional pages of data as the user scrolls toward the bottom of the sidebar. The search functionality integrates with the existing search input field, allowing users to filter both chats and users by keyword with debounced API requests. Pagination state is tracked separately for chats and users to support independent page management. An infinite scroll event listener using jQuery detects when the sidebar has scrolled near the bottom and automatically loads the next page of results without user interaction. The component now renders filtered results when the user enters a search keyword, and displays recent chats and available users when the search field is empty, providing a seamless interface for browsing or searching conversations and contacts.
+
+| Area | Session 6.4-frontend | Session 6.5 |
+|---|---|---|
+| Search filtering | Static chat/user lists only | Live keyword filtering with API search queries |
+| Pagination | Single page of results | Multi-page support with page tracking per data type |
+| Data loading | Load on mount only | Load initial data on mount, then infinite scroll |
+| Infinite scroll | Not implemented | jQuery scroll event listener triggers page loading |
+| Search input binding | No data binding | Reactive v-model binding with watch observer |
+| Result display | Always show same lists | Conditional display of filtered vs recent data |
+| Loading feedback | No indicator | Spinner icon shows during pagination load |
+| Pagination parameters | Not used | page and per_page sent to API endpoints |
+
+`vuejs-app/src/components/includes/LeftSidebar.vue` existed previously and was edited manually to add search keyword binding, pagination state management, infinite scroll event listener setup on component mount, watch observer on keyword for live search filtering, updated generateChats() and generateUsers() functions to accept search parameters and page numbers, and conditional rendering logic for filtered vs recent results with loading indicator.
+
+---
+
+## File Contents
+
+The label below tells you what action to take:
+- **Edited manually** — the file already exists from a previous session; paste the block to replace its contents.
+
+Follow the sections in order from top to bottom.
+
+---
+
+### `vuejs-app/src/components/includes/LeftSidebar.vue`
+
+> **Edited manually** — enhance the sidebar with search keyword binding, pagination state tracking, infinite scroll event listener, and conditional rendering of filtered vs recent chat/user lists.
+
+```vue
 <template>
   <aside class="main-sidebar sidebar-dark-primary elevation-4">
     <router-link to="/" class="brand-link">
@@ -181,3 +226,5 @@ async function generateUsers(
   userLastPage.value = response.data.meta.last_page;
 }
 </script>
+```
+
