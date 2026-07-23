@@ -1,3 +1,129 @@
+# ChatSystem — Frontend group chat member management UI with role-based access control and paginated member listing
+
+## Table of Contents
+
+- [What Changed in Session 7.3](#what-changed-in-session-73)
+- [File Contents](#file-contents)
+  - [vuejs-app/src/functions/api/chat.js](#vuejs-appfunctionsapichatjs)
+  - [vuejs-app/src/components/pages/ChatDetail.vue](#vuejs-appcomponentspageschatdetailvue)
+- [How Each File Works](#how-each-file-works)
+- [Common Commands](#common-commands)
+
+---
+
+## What Changed in Session 7.3
+
+Session 7.2 implemented backend group chat member management API endpoints with three controller methods and corresponding request/resource classes for retrieving, adding, and removing chat members. Session 7.3 completes the feature by integrating frontend group chat member management UI, adding role-based access control to the ChatDetail component, conditionally rendering edit and delete operations for admin-only access, embedding a paginated member list table within the chat details view with search and filtering capabilities, and adding three new API client functions to wrap the backend member management endpoints. The ChatDetail component is enhanced with admin authorization checks that conditionally disable form fields for non-admin group members, hide destructive action buttons from non-admins, and display a comprehensive members table showing member name, email, role, join date, and admin-only member removal actions. New state management for member pagination includes current page, page size, total count, and search keyword tracking. Two new watchers monitor pagination state changes and automatically fetch updated member data. The member table uses the existing `CustomTablePaginated` component for consistent UI and supports inline member removal via confirmation dialog.
+
+| Area | Session 7.2 | Session 7.3 |
+|---|---|---|
+| Backend member API endpoints | Fully implemented | Used via frontend |
+| Frontend API client functions | `apiLeaveGroupChat()` only | Added `apiGetGroupChatMembers()`, `apiAddGroupChatMember()`, `apiRemoveGroupChatMember()` |
+| Chat details form access control | No role checks | `isAdmin` computed property controls form visibility and editability |
+| Member list display | Not implemented | Paginated member table with search, role, and join date |
+| Member removal UI | Not implemented | Inline action buttons with confirmation dialog (admin-only) |
+| Chat edit permissions | All members can edit | Admin-only edit controls |
+| Avatar upload UI | All members can upload | Conditional visibility for admins only |
+| Member pagination state | Not implemented | Managed via refs with watchers for automatic updates |
+
+`vuejs-app/src/functions/api/chat.js` was edited manually to add three new API client functions (`apiGetGroupChatMembers`, `apiAddGroupChatMember`, `apiRemoveGroupChatMember`) that wrap the corresponding backend endpoints. `vuejs-app/src/components/pages/ChatDetail.vue` was edited manually to add role-based access control with an `isAdmin` computed property, conditionally disable form fields and hide buttons based on admin status, add a `CustomTablePaginated` component for displaying members with search and pagination, manage member list state with pagination refs, implement watchers for automatic member data updates on page/size changes, add a columns configuration object for the members table with name, email, role, join date, and actions columns, and implement `generateChatMembers()`, `handleMemberSearchChange()`, and `removeChatMember()` functions for member management operations.
+
+---
+
+## File Contents
+
+The labels below tell you what action to take:
+- **Edited manually** — file already exists from a previous session; paste the block to replace its contents.
+
+Follow the sections in order from top to bottom.
+
+---
+
+### `vuejs-app/src/functions/api/chat.js`
+
+> **Edited manually** — add three API client functions for retrieving, adding, and removing group chat members that wrap backend endpoints.
+
+```js
+import axios from "axios";
+
+const APP_API_URL = import.meta.env.VITE_APP_API_URL;
+
+export async function apiGetChats(params = {}) {
+  return await axios.get(APP_API_URL + "/chats", { params });
+}
+
+export async function apiGetChatUsers(params = {}) {
+  return await axios.get(APP_API_URL + "/chats/users", { params });
+}
+
+export async function apiCreatePersonalChat(userId) {
+  return await axios.post(APP_API_URL + `/chats/personal/create`, {
+    user_id: userId,
+  });
+}
+
+export async function apiCreateGroupChat(data) {
+  const formData = new FormData();
+  Object.keys(data).forEach((key) => {
+    if (!data[key]) return;
+    formData.append(key, data[key]);
+  });
+  return await axios.post(APP_API_URL + "/chats/group/create", formData);
+}
+
+export async function apiReadChat(chatId) {
+  return await axios.get(APP_API_URL + `/chats/read/${chatId}`);
+}
+
+export async function apiDeleteChat(chatId) {
+  return await axios.delete(APP_API_URL + `/chats/delete/${chatId}`);
+}
+
+export async function apiUpdateGroupChat(chatId, data) {
+  const formData = new FormData();
+  Object.keys(data).forEach((key) => {
+    // Allow explicit null values for avatar deletion
+    if (data[key] === null) {
+      formData.append(key, "");
+      return;
+    }
+    if (!data[key]) return;
+    formData.append(key, data[key]);
+  });
+  return await axios.put(
+    APP_API_URL + `/chats/group/update/${chatId}`,
+    formData,
+  );
+}
+
+export async function apiLeaveGroupChat(chatId) {
+  return await axios.delete(APP_API_URL + `/chats/group/leave/${chatId}`);
+}
+
+export async function apiGetGroupChatMembers(chatId, params = {}) {
+  return await axios.get(APP_API_URL + `/chats/group/${chatId}/members`, {
+    params,
+  });
+}
+export async function apiAddGroupChatMember(chatId, userId) {
+  return await axios.post(APP_API_URL + `/chats/group/${chatId}/members/add`, {
+    user_id: userId,
+  });
+}
+export async function apiRemoveGroupChatMember(chatId, memberId) {
+  return await axios.delete(
+    APP_API_URL + `/chats/group/${chatId}/members/remove/${memberId}`,
+  );
+}
+```
+
+---
+
+### `vuejs-app/src/components/pages/ChatDetail.vue`
+
+> **Edited manually** — add role-based access control, conditionally disable editing for non-admins, integrate paginated member list table with search and removal functionality.
+
+```vue
 <template>
   <div class="content-wrapper" style="min-height: 1175px;">
     <div class="content-header">
@@ -408,3 +534,57 @@ async function removeChatMember(memberId) {
   });
 }
 </script>
+```
+
+---
+
+## How Each File Works
+
+### API Client Functions
+
+Three new functions extend the chat API client to support group member management operations on the frontend:
+
+**`apiGetGroupChatMembers(chatId, params)`** retrieves a paginated list of group chat members. It accepts optional parameters for keyword search filtering and pagination (page, per_page). The response includes an array of member resources (ID, role, name, email, joined_at timestamp) and pagination metadata (current_page, last_page, per_page, total count). This function is called when the ChatDetail component loads for a group chat and whenever pagination or search parameters change.
+
+**`apiAddGroupChatMember(chatId, userId)`** sends a POST request to add a new member to a group chat. It accepts the chat ID and user ID in the request body. The backend validates that the requesting user is a group admin before allowing the addition. This function is not currently used in ChatDetail but is available for future "add member" UI implementations.
+
+**`apiRemoveGroupChatMember(chatId, memberId)`** sends a DELETE request to remove a member from a group chat. It accepts the chat ID and member ID as URL parameters. The backend validates admin-only authorization and prevents removing the requesting user (directing them to use the leave chat endpoint instead). This function is called from the `removeChatMember()` method when a user clicks the delete button in the members table.
+
+### ChatDetail Component
+
+The ChatDetail component provides the UI for viewing and managing group chat metadata and members. Key enhancements in Session 7.3:
+
+**Role-Based Access Control**: The `isAdmin` computed property checks if the current user is listed as an admin in the members array. This value gates access to edit operations (name, description, avatar upload/delete) and destructive actions (update, delete). Form fields are disabled for non-admins via the `:disabled` binding. The "Update Chat" and "Delete Chat" buttons are hidden entirely from non-admins using `v-if="isAdmin"`. The avatar upload/delete buttons are similarly hidden from non-admin members.
+
+**Member List Display**: The `CustomTablePaginated` component is rendered below the chat details form for group chats only (`v-if="chatType === 'group'"`). The table displays five columns: member name and email (fetched from related user data), member role ('admin' or 'member'), join date formatted via `utcToLocal()`, and an Actions column with a delete button.
+
+**Member State Management**: Five refs track the member list state: `members` (array of member objects), `memberCurrentPage` (current pagination page), `memberPageSize` (results per page, default 25), `memberTotal` (total count of members), `memberLastPage` (last available page), and `memberKeyword` (current search keyword). These are bound to the table component using `v-model` for two-way updates.
+
+**Member Data Fetching**: The `generateChatMembers()` function calls `apiGetGroupChatMembers()` with the current chat ID and pagination/search parameters, then updates all five state refs from the API response. Two watchers automatically call this function when the page or page size changes, triggering re-fetches. The `handleMemberSearchChange()` handler is called when the user types in the search box, resetting to page 1 and re-fetching.
+
+**Member Removal**: The Actions column renders a delete button for each member using Vue's `h()` render function. The button is disabled if the current user is not an admin or if the member is the current user themselves. Clicking the button calls `removeChatMember()`, which shows a Swal confirmation dialog. If confirmed, it calls `apiRemoveGroupChatMember()` and filters the member from the local array to provide instant UI feedback.
+
+**Initial Load**: When the component mounts or the chat ID changes, the watcher calls `readChat()` to fetch chat details, then calls `generateChatMembers()` if the chat type is 'group' to populate the members table.
+
+---
+
+## Common Commands
+
+```bash
+# View group chat details and members
+# Navigate to /chat/:chatId/details in the browser
+
+# Test retrieving members via API
+curl -X GET "http://localhost/api/chats/group/1/members?per_page=25&page=1&keyword=john" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Test removing a member via API
+curl -X DELETE "http://localhost/api/chats/group/1/members/remove/3" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Run component tests
+npm run test -- ChatDetail.spec.js
+
+# Run end-to-end tests for chat member management
+npm run test:e2e -- chat-member-management
+```
