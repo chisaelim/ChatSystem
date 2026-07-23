@@ -1,3 +1,207 @@
+# ChatSystem — Frontend add chat member modal dialog with paginated user selection and admin authorization
+
+## Table of Contents
+
+- [What Changed in Session 7.4](#what-changed-in-session-74)
+- [File Contents](#file-contents)
+  - [vuejs-app/src/components/includes/modals/AddChatMemberModal.vue](#vuejs-appcomponentsincludesmodalsaddchatmembermodalvue)
+  - [vuejs-app/src/components/pages/ChatDetail.vue](#vuejs-appcomponentspageschatdetailvue)
+- [How Each File Works](#how-each-file-works)
+- [Common Commands](#common-commands)
+
+---
+
+## What Changed in Session 7.4
+
+Session 7.3 implemented the complete frontend group chat member management UI with role-based access control, paginated member listing with search capabilities, and inline member removal functionality. Session 7.4 extends the member management workflow by introducing a reusable modal component for adding new members to group chats, enabling admins to select users from a paginated list of available (non-member) users with search and pagination support, displaying user profile thumbnails alongside member information for visual identification, implementing member availability checking to disable the "Add" button for users already in the chat, and integrating the modal into ChatDetail with an "Add Members" button visible only to group admins. The new AddChatMemberModal component leverages the existing CustomTablePaginated table component for consistent UI, manages independent pagination state for the modal's user list, and accepts a callback function from the parent ChatDetail component to refresh the members list after successful additions. The ChatDetail component is updated to import and instantiate the modal, expose the modal reference for parent control, and add an "Add Members" button adjacent to the "Update Chat" button for admin-only member addition workflows.
+
+| Area | Session 7.3 | Session 7.4 |
+|---|---|---|
+| Member list display | Paginated table below chat details | Same, unchanged |
+| Member removal UI | Inline delete buttons | Same, unchanged |
+| Adding members workflow | Not implemented | AddChatMemberModal modal dialog |
+| User selection for member add | Not implemented | Paginated available users table |
+| Member availability checking | Not implemented | Disable "Add" button for existing members |
+| User profile display | Not implemented | Profile thumbnail in modal user list |
+| Add member button | Not implemented | "Add Members" button (admin-only) |
+| Modal state management | Not implemented | Independent pagination and search |
+| Modal callback pattern | Not implemented | `onMemberAdded` callback to parent |
+
+`vuejs-app/src/components/includes/modals/AddChatMemberModal.vue` was created manually as a reusable modal component for adding members to group chats, accepting props for chat ID, current members array, and callback function, providing paginated user listing with search via CustomTablePaginated, implementing member availability checking via `isMember()` function, calling the API `apiAddGroupChatMember()` on user selection, and exposing `showModal()` and `hideModal()` methods for parent control. `vuejs-app/src/components/pages/ChatDetail.vue` was edited manually to import AddChatMemberModal, add a template ref for modal access, instantiate the modal at the bottom of the template with proper prop bindings, add an "Add Members" button (visible to admins only) that calls the modal's `showModal()` method, and update the `isAdmin` state handling to properly track admin status reactively.
+
+---
+
+## File Contents
+
+The labels below tell you what action to take:
+- **Created manually** — file does not exist and no CLI command creates it; paste the block to replace its contents.
+- **Edited manually** — file already exists from a previous session; paste the block to replace its contents.
+
+Follow the sections in order from top to bottom.
+
+---
+
+### `vuejs-app/src/components/includes/modals/AddChatMemberModal.vue`
+
+> **Created manually** — modal component for adding new members to group chats with paginated user selection, profile display, and member availability checking.
+
+```vue
+<template>
+  <div class="modal fade" ref="AddChatMemberModal" aria-modal="true" role="dialog">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h4 class="modal-title">Add Chat Member</h4>
+          <button type="button" class="close" @click="hideModal" aria-label="Close">
+            <span aria-hidden="true">×</span>
+          </button>
+        </div>
+        <div class="modal-body">
+          <CustomTablePaginated :title="'Users'" :data="users" :columns="columns" v-model:currentPage="currentPage"
+            v-model:lastPage="lastPage" v-model:total="total" v-model:pageSize="pageSize" v-model:keyword="keyword"
+            @search-change="handleSearchChange" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+</template>
+
+<script setup>
+import emptyImage from "@/assets/images/emptyImage.png";
+import { ref, watch, h } from "vue";
+import { LoadingModal, CloseModal, MessageModal } from "@/functions/swal";
+import { apiAddGroupChatMember } from "@/functions/api/chat";
+import $ from "jquery";
+import { apiGetChatUsers } from "@/functions/api/chat";
+import CustomTablePaginated from "@/components/includes/controls/CustomTablePaginated.vue";
+
+const props = defineProps({
+  chatId: {
+    required: true,
+  },
+  members: {
+    type: Array,
+    required: true,
+  },
+  onMemberAdded: {
+    type: Function,
+    required: true,
+  },
+});
+
+const AddChatMemberModal = ref();
+const users = ref([]);
+const columns = [
+  {
+    header: "Profile",
+    accessorKey: "profile_thumbnail",
+    cell: (info) => h("img", {
+      src: info.getValue() || emptyImage,
+      alt: "Profile Thumbnail",
+      class: "img-circle elevation-2",
+      style: "width: 40px; height: 40px; object-fit: cover;"
+    })
+  },
+  {
+    header: "Name",
+    accessorKey: "name",
+  },
+  {
+    header: "Email",
+    accessorKey: "email",
+  },
+  {
+    header: "Action",
+    accessorKey: "id",
+    cell: (cell) =>
+      h("button", {
+        disabled: isMember(cell.getValue()),  // Disable if already a member
+        class: "btn btn-primary btn-sm",
+        onClick: () => addMember(cell.getValue())
+      }, "Add")
+  }
+];
+
+// Pagination state
+const currentPage = ref(1);
+const pageSize = ref(25);
+const total = ref(0);
+const lastPage = ref(1);
+const keyword = ref("");  // Track search keyword
+
+async function generateUsers(searchKeyword = "", page = 1, per_page = 25) {
+  try {
+    LoadingModal();
+    const response = await apiGetChatUsers({
+      keyword: searchKeyword,
+      page: page,
+      per_page: per_page,
+    });
+
+    // Update all pagination state from API response
+    users.value = response.data.users;
+    currentPage.value = response.data.meta.current_page;
+    pageSize.value = response.data.meta.per_page;
+    total.value = response.data.meta.total;
+    lastPage.value = response.data.meta.last_page;
+    return CloseModal();
+  } catch (error) {
+    return MessageModal({ icon: "error", title: "Error", text: error.message || error.response?.data?.message });
+  }
+}
+
+// Watch for pagination changes to fetch data
+watch(currentPage, async (newPage, oldPage) => {
+  if (newPage !== oldPage) {
+    await generateUsers(keyword.value, newPage, pageSize.value);
+  }
+});
+
+watch(pageSize, async (newSize, oldSize) => {
+  if (newSize !== oldSize) {
+    await generateUsers(keyword.value, 1, newSize);
+  }
+});
+
+async function handleSearchChange(searchKeyword) {
+  await generateUsers(searchKeyword, 1, pageSize.value);
+}
+
+async function addMember(userId) {
+  try {
+    const response = await apiAddGroupChatMember(props.chatId, userId);
+    props.onMemberAdded(); // Call the parent function to refresh the member list
+    return MessageModal({ icon: "success", title: "Success", text: response.data.message });
+  } catch (error) {
+    return MessageModal({ icon: "error", title: "Error", text: error.response?.data?.message || error.message });
+  }
+}
+function isMember(userId) {
+  return props.members.some(member => member.user.id === userId);
+}
+function hideModal() {
+  $(AddChatMemberModal.value).modal('hide');
+}
+function showModal() {
+  $(AddChatMemberModal.value).modal('show');
+}
+defineExpose({
+  showModal,
+  hideModal
+});
+
+
+</script>
+```
+
+---
+
+### `vuejs-app/src/components/pages/ChatDetail.vue`
+
+> **Edited manually** — import AddChatMemberModal, add modal reference and template instance, add "Add Members" button for admins, update isAdmin to reactive ref with proper initialization.
+
+```vue
 <template>
   <div class="content-wrapper" style="min-height: 1175px;">
     <div class="content-header">
@@ -417,3 +621,67 @@ async function removeChatMember(memberId) {
   });
 }
 </script>
+```
+
+---
+
+## How Each File Works
+
+### AddChatMemberModal Component
+
+The AddChatMemberModal is a reusable modal dialog that enables group chat admins to add new members from a paginated list of available users. It accepts three props from the parent ChatDetail component:
+
+**Props**: `chatId` (required) identifies which chat to add members to; `members` (required array) contains the current members and is used to determine which users are already members; `onMemberAdded` (required function) is a callback invoked after successfully adding a member, typically `generateChatMembers` from the parent to refresh the display.
+
+**User List Display**: The modal uses CustomTablePaginated to display five columns: profile thumbnail (displayed as a 40×40px circular image), user name, user email, and an "Add" button in the Actions column. The table fetches data from `apiGetChatUsers()` which returns users not already in any personal chat with the current user.
+
+**Availability Checking**: The `isMember()` function checks if a user ID exists in the current members array. The "Add" button is disabled via the `:disabled` binding when `isMember()` returns true, preventing duplicate additions.
+
+**Member Addition**: Clicking the "Add" button calls `addMember(userId)`, which:
+1. Calls `apiAddGroupChatMember(props.chatId, userId)` to send the addition request to the backend
+2. Invokes the parent's `onMemberAdded()` callback to refresh the chat members table
+3. Displays a success message if the API call succeeds
+4. Displays an error message if the API call fails (e.g., user already exists)
+
+**Pagination and Search**: The modal maintains independent pagination state (`currentPage`, `pageSize`, `total`, `lastPage`) and search keyword. Watchers automatically re-fetch user data when these values change. The `handleSearchChange()` handler is bound to the table's search input and resets to page 1 when the user types.
+
+**Modal Visibility Control**: The component exposes `showModal()` and `hideModal()` methods via `defineExpose()`, which are called by the parent via a template ref (`AddChatMemberModalRef`). Bootstrap's jQuery modal methods are used to toggle visibility.
+
+### ChatDetail Updates
+
+ChatDetail is updated to integrate the AddChatMemberModal component:
+
+**Import and Ref**: The modal component is imported at the top of the script setup. A template ref `AddChatMemberModalRef` is created to hold the modal instance for method access.
+
+**Modal Instance**: At the bottom of the template, the AddChatMemberModal component is instantiated with props bound to the current chat ID, members array, and `generateChatMembers` function as the callback.
+
+**"Add Members" Button**: A new button is added to the group chat form section with `v-if="isAdmin"` to make it admin-only. The button calls `AddChatMemberModalRef.showModal()` to display the modal when clicked.
+
+**isAdmin Ref**: The `isAdmin` value is changed from a computed property to a reactive ref (`ref(false)`) to allow direct assignment. It is initialized after fetching members in the route watcher: `isAdmin.value = members.value.some(member => member.user.id === userStore.id && member.role === 'admin') || false;`
+
+**Callback Pattern**: When the modal successfully adds a member, it calls `props.onMemberAdded()`, which is bound to `generateChatMembers`. This automatically refreshes the members list below the form.
+
+---
+
+## Common Commands
+
+```bash
+# View chat details and add members
+# Navigate to /chat/:chatId/details and click "Add Members" button as admin
+
+# Test adding a member via API
+curl -X POST "http://localhost/api/chats/group/1/members/add" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": 2}'
+
+# Test retrieving available users (non-members)
+curl -X GET "http://localhost/api/chats/users?per_page=25&page=1&keyword=john" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Run component tests
+npm run test -- AddChatMemberModal.spec.js
+
+# Run end-to-end tests for add member workflow
+npm run test:e2e -- add-member-modal
+```
