@@ -74,14 +74,23 @@
 import emptyImage from "@/assets/images/emptyImage.png";
 import logoImage from "@/assets/images/logoImage.webp";
 import { useUserStore } from "@/stores/user";
+import { useRecentChatsStore } from "@/stores/recentChats";
 import { ref, onMounted, watch, computed } from "vue";
 import { apiGetChats, apiGetChatUsers } from "@/functions/api/chat";
 import ChatList from "@/components/includes/controls/ChatList.vue";
 import UserList from "@/components/includes/controls/UserList.vue";
 import $ from "jquery";
+import { useRoute } from "vue-router";
+
+const route = useRoute();
+watch(route, (newRoute) => {
+  keyword.value = "";
+});
 
 const userStore = useUserStore();
-const recentChats = ref([]);
+const recentChatsStore = useRecentChatsStore();
+
+const recentChats = computed(() => recentChatsStore.chats);
 const filteredChats = ref([]);
 const filteredUsers = ref([]);
 
@@ -166,7 +175,7 @@ async function generateChats(
   if (filtering.value) {
     filteredChats.value = [...filteredChats.value, ...response.data.chats];
   } else {
-    recentChats.value = [...recentChats.value, ...response.data.chats];
+    recentChatsStore.syncMultiChats([...recentChatsStore.chats, ...response.data.chats]);
   }
 
   chatCurrentPage.value = response.data.meta.current_page;
