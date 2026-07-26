@@ -61,5 +61,11 @@ Route::middleware(['auth:sanctum', 'enabled'])->group(function () {
         Route::get('/group/{chatId}/members', [ChatController::class, 'getGroupChatMembers']);
         Route::post('/group/{chatId}/members/add', [ChatController::class, 'addGroupChatMember']);
         Route::delete('/group/{chatId}/members/remove/{memberId}', [ChatController::class, 'removeGroupChatMember']);
+
+        Route::get('/{chatId}/messages', [ChatController::class, 'getChatMessages']);
+        Route::post('/{chatId}/messages/create', [ChatController::class, 'createChatMessage']);
+        Route::patch('/{chatId}/messages/update/{messageId}', [ChatController::class, 'updateChatMessage']);
+        Route::delete('/{chatId}/messages/delete/{messageId}', [ChatController::class, 'deleteChatMessage']);
+        Route::post('/{chatId}/messages/seen-all', [ChatController::class, 'markAllChatMessagesAsSeen']);
     });
 });
