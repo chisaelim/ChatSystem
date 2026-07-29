@@ -7,7 +7,7 @@ Broadcast::channel('ChatEvent.{userId}', function ($user, $userId) {
     return (int) $user->id === (int) $userId;
 });
 
-Broadcast::channel('MessageEvent.{chatId}', function ($user, $chatId) {
+Broadcast::channel('ChatMessageEvent.{userId}', function ($user, $userId) {
     // Check if the user is a participant of the chat
-    return $user->chats()->where('chats.id', $chatId)->exists();
+    return (int) $user->id === (int) $userId;
 });

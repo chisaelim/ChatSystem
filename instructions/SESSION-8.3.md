@@ -9,9 +9,9 @@
   - [app/Events/ChatCreated.php](#appeventschatcreatedphp)
   - [app/Events/ChatDeleted.php](#appeventschatdeletedphp)
   - [app/Events/ChatUpdated.php](#appeventschatupdatedphp)
-  - [app/Events/MessageCreated.php](#appeventsmessagecreatedphp)
-  - [app/Events/MessageDeleted.php](#appeventsmessagedeletedphp)
-  - [app/Events/MessageUpdated.php](#appeventsmessageupdatedphp)
+  - [app/Events/ChatMessageCreated.php](#appeventsmessagecreatedphp)
+  - [app/Events/ChatMessageDeleted.php](#appeventsmessagedeletedphp)
+  - [app/Events/ChatMessageUpdated.php](#appeventsmessageupdatedphp)
   - [routes/channels.php](#routeschannelsphp)
   - [resources/js/echo.js](#resourcesjsechojs)
   - [resources/js/app.js](#resourcesjsappjs)
@@ -34,7 +34,7 @@
 
 ## What Changed in Session 8.3
 
-Session 8.2 implemented the frontend send and delete message functionality that completes the frontend CRUD operations for text messages, featuring a two-way bound message input field with character limit validation, a send message handler that posts new messages via `apiCreateChatMessage()` and syncs them to the store before clearing the input and auto-scrolling to bottom, and a delete message handler with SweetAlert confirmation dialog that calls `apiDeleteChatMessage()` and removes the message from the store via `removeChatMessage()`. Session 8.3 implements real-time WebSocket broadcasting infrastructure using Laravel Reverb, enabling instant push notifications for chat and message events across all connected clients without polling. The session installs Laravel Reverb package via Composer to provide the WebSocket server, publishes broadcasting and reverb configuration files via `php artisan install:broadcasting` to define connection settings and app credentials, creates six broadcast event classes (`ChatCreated`, `ChatDeleted`, `ChatUpdated`, `MessageCreated`, `MessageDeleted`, `MessageUpdated`) using `php artisan make:event` commands that implement `ShouldBroadcastNow` interface for synchronous broadcasting, configures private channel authorization in `routes/channels.php` with `ChatEvent.{userId}` channel for user-specific chat notifications and `MessageEvent.{chatId}` channel for chat-specific message notifications, installs `laravel-echo` and `pusher-js` npm packages for JavaScript WebSocket client, configures Laravel Echo in `resources/js/echo.js` with Reverb broadcaster settings using Vite environment variables, updates `bootstrap/app.php` to register broadcasting routes with Sanctum authentication middleware and channel file path, modifies `ChatController` to broadcast events after create/update/delete operations on both chats and messages by calling `broadcast(new EventClass(...))->toOthers()` to exclude the acting user from receiving their own broadcast, adds Reverb environment variables to `.env.example` including app credentials and connection settings, exposes port 8080 in `compose.yaml` for Reverb WebSocket connections, and adds `laravel-reverb` supervisor program to `supervisord.development.conf` to run `php artisan reverb:start` continuously in the Docker container alongside the Laravel Octane server, queue worker, and schedule worker.
+Session 8.2 implemented the frontend send and delete message functionality that completes the frontend CRUD operations for text messages, featuring a two-way bound message input field with character limit validation, a send message handler that posts new messages via `apiCreateChatMessage()` and syncs them to the store before clearing the input and auto-scrolling to bottom, and a delete message handler with SweetAlert confirmation dialog that calls `apiDeleteChatMessage()` and removes the message from the store via `removeChatMessage()`. Session 8.3 implements real-time WebSocket broadcasting infrastructure using Laravel Reverb, enabling instant push notifications for chat and message events across all connected clients without polling. The session installs Laravel Reverb package via Composer to provide the WebSocket server, publishes broadcasting and reverb configuration files via `php artisan install:broadcasting` to define connection settings and app credentials, creates six broadcast event classes (`ChatCreated`, `ChatDeleted`, `ChatUpdated`, `ChatMessageCreated`, `ChatMessageDeleted`, `ChatMessageUpdated`) using `php artisan make:event` commands that implement `ShouldBroadcastNow` interface for synchronous broadcasting, configures private channel authorization in `routes/channels.php` with `ChatEvent.{userId}` channel for user-specific chat notifications and `ChatMessageEvent.{chatId}` channel for chat-specific message notifications, installs `laravel-echo` and `pusher-js` npm packages for JavaScript WebSocket client, configures Laravel Echo in `resources/js/echo.js` with Reverb broadcaster settings using Vite environment variables, updates `bootstrap/app.php` to register broadcasting routes with Sanctum authentication middleware and channel file path, modifies `ChatController` to broadcast events after create/update/delete operations on both chats and messages by calling `broadcast(new EventClass(...))->toOthers()` to exclude the acting user from receiving their own broadcast, adds Reverb environment variables to `.env.example` including app credentials and connection settings, exposes port 8080 in `compose.yaml` for Reverb WebSocket connections, and adds `laravel-reverb` supervisor program to `supervisord.development.conf` to run `php artisan reverb:start` continuously in the Docker container alongside the Laravel Octane server, queue worker, and schedule worker.
 
 | Area | Session 8.2 | Session 8.3 |
 |---|---|---|
@@ -45,7 +45,7 @@ Session 8.2 implemented the frontend send and delete message functionality that 
 | Channel authorization | Not configured | Private channels with user/chat authorization |
 | JavaScript client | Not present | Laravel Echo with Pusher.js configured |
 | Chat CRUD broadcasting | Not implemented | Broadcasts ChatCreated, ChatUpdated, ChatDeleted |
-| Message CRUD broadcasting | Not implemented | Broadcasts MessageCreated, MessageUpdated, MessageDeleted |
+| Message CRUD broadcasting | Not implemented | Broadcasts ChatMessageCreated, ChatMessageUpdated, ChatMessageDeleted |
 | Composer dependencies | No Reverb package | laravel/reverb ^1.11 installed |
 | npm dependencies | No WebSocket packages | laravel-echo ^2.4.0 and pusher-js ^8.6.0 installed |
 | Bootstrap config | No broadcasting routes | Broadcasting routes with Sanctum auth registered |
@@ -55,7 +55,7 @@ Session 8.2 implemented the frontend send and delete message functionality that 
 | Controller event dispatch | Not implemented | broadcast()->toOthers() after CRUD operations |
 | Channel privacy | Not configured | User ID and chat membership authorization |
 
-`composer.json` was modified by command when running `composer require laravel/reverb:^1.11` to install the Laravel Reverb package and its dependencies including Pusher HTTP PHP client and ReactPHP socket libraries for WebSocket functionality. `package.json` was modified by command when running `npm install laravel-echo@^2.4.0 pusher-js@^8.6.0 --save-dev` to install the JavaScript WebSocket client packages. `config/broadcasting.php` was generated by command when running `php artisan install:broadcasting` to publish Laravel's broadcast configuration file, then manually edited to ensure the Reverb connection is configured with app credentials and client options. `config/reverb.php` was generated by command when running `php artisan install:broadcasting` to publish Reverb's server configuration file, then manually edited to configure server host, port, scaling options, and application settings. `app/Events/ChatCreated.php` was generated by command using `php artisan make:event ChatCreated`, then manually edited to implement `ShouldBroadcastNow`, define the private channel `ChatEvent.{userId}`, set the broadcast event name to `ChatCreated`, and return a `ChatResource` with loaded messages and members in the `broadcastWith()` payload. `app/Events/ChatDeleted.php` was generated by command using `php artisan make:event ChatDeleted`, then manually edited to implement `ShouldBroadcastNow`, define the private channel `ChatEvent.{userId}`, set the broadcast event name to `ChatDeleted`, and return only the `chat_id` integer in the `broadcastWith()` payload. `app/Events/ChatUpdated.php` was generated by command using `php artisan make:event ChatUpdated`, then manually edited to implement `ShouldBroadcastNow`, define the private channel `ChatEvent.{userId}`, set the broadcast event name to `ChatUpdated`, and return a `ChatResource` with loaded messages and members in the `broadcastWith()` payload. `app/Events/MessageCreated.php` was generated by command using `php artisan make:event MessageCreated`, then manually edited to implement `ShouldBroadcastNow`, define the private channel `MessageEvent.{chatId}`, set the broadcast event name to `MessageCreated`, and return a `ChatMessageResource` with loaded creator in the `broadcastWith()` payload. `app/Events/MessageDeleted.php` was generated by command using `php artisan make:event MessageDeleted`, then manually edited to implement `ShouldBroadcastNow`, define the private channel `MessageEvent.{chatId}`, set the broadcast event name to `MessageDeleted`, and return only the `message_id` integer in the `broadcastWith()` payload. `app/Events/MessageUpdated.php` was generated by command using `php artisan make:event MessageUpdated`, then manually edited to implement `ShouldBroadcastNow`, define the private channel `MessageEvent.{chatId}`, set the broadcast event name to `MessageUpdated`, and return a `ChatMessageResource` with loaded creator in the `broadcastWith()` payload. `routes/channels.php` was generated by command when running `php artisan install:broadcasting` to publish the channel authorization file, then manually edited to define two private channel authorization callbacks: `ChatEvent.{userId}` that verifies the authenticated user's ID matches the route parameter to ensure users only receive their own chat notifications, and `MessageEvent.{chatId}` that checks if the authenticated user is a member of the chat using `$user->chats()->where('chats.id', $chatId)->exists()` to authorize access to chat-specific message broadcasts. `resources/js/echo.js` was generated by command when running `php artisan install:broadcasting` to publish the Laravel Echo configuration file, then manually edited to import `laravel-echo` and `pusher-js` packages, set `window.Pusher` for Reverb compatibility, and configure the Echo instance with `broadcaster: 'reverb'`, connection credentials from Vite environment variables (`VITE_REVERB_APP_KEY`, `VITE_REVERB_HOST`, `VITE_REVERB_PORT`, `VITE_REVERB_SCHEME`), and enabled transports of `['ws', 'wss']` for WebSocket connections. `resources/js/app.js` was edited manually to add an import statement `import './echo';` below the existing comment block to initialize the Laravel Echo WebSocket client when the application JavaScript bundle loads. `bootstrap/app.php` was edited manually to add `channels: __DIR__ . '/../routes/channels.php'` parameter in the `withRouting()` method to register the broadcast channel routes, and add the `->withBroadcasting()` method call with arguments `__DIR__ . '/../routes/channels.php'` for the channel file path and `['prefix' => 'api', 'middleware' => ['api', 'auth:sanctum']]` to ensure channel authorization requests are authenticated via Sanctum API tokens. `app/Http/Controllers/API/ChatController.php` was edited manually to import all six broadcast event classes (`ChatCreated`, `ChatDeleted`, `ChatUpdated`, `MessageCreated`, `MessageDeleted`, `MessageUpdated`), add broadcast calls after successful chat creation by looping through `$chat->members` and calling `broadcast(new ChatCreated($chat, $member->user_id))->toOthers()` for each member, add broadcast calls after successful chat update by looping through members and calling `broadcast(new ChatUpdated($chat, $member->user_id))->toOthers()`, add broadcast call after successful chat deletion by looping through members and calling `broadcast(new ChatDeleted($chat->id, $member->user_id))->toOthers()`, add broadcast call after successful message creation with `broadcast(new MessageCreated($message, $chatId))->toOthers()`, add broadcast call after successful message update with `broadcast(new MessageUpdated($message, $chatId))->toOthers()`, and add broadcast call after successful message deletion with `broadcast(new MessageDeleted($message->id, $chatId))->toOthers()`. `laravel-app/.env.example` was edited manually to add `BROADCAST_CONNECTION=reverb` to set the default broadcast driver, and add a complete Reverb configuration block including `REVERB_APP_ID=`, `REVERB_APP_KEY=`, `REVERB_APP_SECRET=`, `REVERB_HOST="localhost"`, `REVERB_PORT=8080`, `REVERB_SCHEME=http` for server settings, and matching Vite environment variables `VITE_REVERB_APP_KEY="${REVERB_APP_KEY}"`, `VITE_REVERB_HOST="${REVERB_HOST}"`, `VITE_REVERB_PORT="${REVERB_PORT}"`, `VITE_REVERB_SCHEME="${REVERB_SCHEME}"` to expose Reverb credentials to the frontend JavaScript build. `compose.yaml` was edited manually to add port mapping `"8080:8080"` to the `laravel-service` ports array to expose the Reverb WebSocket server running inside the Docker container on port 8080 to the host machine. `docker/laravel/supervisord.development.conf` was edited manually to add a new `[program:laravel-reverb]` section with `command=php artisan reverb:start --host=0.0.0.0 --port=8080` to start the Reverb WebSocket server, `directory=/var/www/html` for the working directory, `autostart=true` and `autorestart=true` to ensure the server runs continuously and restarts on failure, and `stdout_logfile=/dev/stdout` with `stderr_logfile=/dev/stderr` to pipe logs to the container console.
+`composer.json` was modified by command when running `composer require laravel/reverb:^1.11` to install the Laravel Reverb package and its dependencies including Pusher HTTP PHP client and ReactPHP socket libraries for WebSocket functionality. `package.json` was modified by command when running `npm install laravel-echo@^2.4.0 pusher-js@^8.6.0 --save-dev` to install the JavaScript WebSocket client packages. `config/broadcasting.php` was generated by command when running `php artisan install:broadcasting` to publish Laravel's broadcast configuration file, then manually edited to ensure the Reverb connection is configured with app credentials and client options. `config/reverb.php` was generated by command when running `php artisan install:broadcasting` to publish Reverb's server configuration file, then manually edited to configure server host, port, scaling options, and application settings. `app/Events/ChatCreated.php` was generated by command using `php artisan make:event ChatCreated`, then manually edited to implement `ShouldBroadcastNow`, define the private channel `ChatEvent.{userId}`, set the broadcast event name to `ChatCreated`, and return a `ChatResource` with loaded messages and members in the `broadcastWith()` payload. `app/Events/ChatDeleted.php` was generated by command using `php artisan make:event ChatDeleted`, then manually edited to implement `ShouldBroadcastNow`, define the private channel `ChatEvent.{userId}`, set the broadcast event name to `ChatDeleted`, and return only the `chat_id` integer in the `broadcastWith()` payload. `app/Events/ChatUpdated.php` was generated by command using `php artisan make:event ChatUpdated`, then manually edited to implement `ShouldBroadcastNow`, define the private channel `ChatEvent.{userId}`, set the broadcast event name to `ChatUpdated`, and return a `ChatResource` with loaded messages and members in the `broadcastWith()` payload. `app/Events/ChatMessageCreated.php` was generated by command using `php artisan make:event ChatMessageCreated`, then manually edited to implement `ShouldBroadcastNow`, define the private channel `ChatMessageEvent.{chatId}`, set the broadcast event name to `ChatMessageCreated`, and return a `ChatMessageResource` with loaded creator in the `broadcastWith()` payload. `app/Events/ChatMessageDeleted.php` was generated by command using `php artisan make:event ChatMessageDeleted`, then manually edited to implement `ShouldBroadcastNow`, define the private channel `ChatMessageEvent.{chatId}`, set the broadcast event name to `ChatMessageDeleted`, and return only the `message_id` integer in the `broadcastWith()` payload. `app/Events/ChatMessageUpdated.php` was generated by command using `php artisan make:event ChatMessageUpdated`, then manually edited to implement `ShouldBroadcastNow`, define the private channel `ChatMessageEvent.{chatId}`, set the broadcast event name to `ChatMessageUpdated`, and return a `ChatMessageResource` with loaded creator in the `broadcastWith()` payload. `routes/channels.php` was generated by command when running `php artisan install:broadcasting` to publish the channel authorization file, then manually edited to define two private channel authorization callbacks: `ChatEvent.{userId}` that verifies the authenticated user's ID matches the route parameter to ensure users only receive their own chat notifications, and `ChatMessageEvent.{chatId}` that checks if the authenticated user is a member of the chat using `$user->chats()->where('chats.id', $chatId)->exists()` to authorize access to chat-specific message broadcasts. `resources/js/echo.js` was generated by command when running `php artisan install:broadcasting` to publish the Laravel Echo configuration file, then manually edited to import `laravel-echo` and `pusher-js` packages, set `window.Pusher` for Reverb compatibility, and configure the Echo instance with `broadcaster: 'reverb'`, connection credentials from Vite environment variables (`VITE_REVERB_APP_KEY`, `VITE_REVERB_HOST`, `VITE_REVERB_PORT`, `VITE_REVERB_SCHEME`), and enabled transports of `['ws', 'wss']` for WebSocket connections. `resources/js/app.js` was edited manually to add an import statement `import './echo';` below the existing comment block to initialize the Laravel Echo WebSocket client when the application JavaScript bundle loads. `bootstrap/app.php` was edited manually to add `channels: __DIR__ . '/../routes/channels.php'` parameter in the `withRouting()` method to register the broadcast channel routes, and add the `->withBroadcasting()` method call with arguments `__DIR__ . '/../routes/channels.php'` for the channel file path and `['prefix' => 'api', 'middleware' => ['api', 'auth:sanctum']]` to ensure channel authorization requests are authenticated via Sanctum API tokens. `app/Http/Controllers/API/ChatController.php` was edited manually to import all six broadcast event classes (`ChatCreated`, `ChatDeleted`, `ChatUpdated`, `ChatMessageCreated`, `ChatMessageDeleted`, `ChatMessageUpdated`), add broadcast calls after successful chat creation by looping through `$chat->members` and calling `broadcast(new ChatCreated($chat, $member->user_id))->toOthers()` for each member, add broadcast calls after successful chat update by looping through members and calling `broadcast(new ChatUpdated($chat, $member->user_id))->toOthers()`, add broadcast call after successful chat deletion by looping through members and calling `broadcast(new ChatDeleted($chat->id, $member->user_id))->toOthers()`, add broadcast call after successful message creation with `broadcast(new ChatMessageCreated($message, $chatId))->toOthers()`, add broadcast call after successful message update with `broadcast(new ChatMessageUpdated($message, $chatId))->toOthers()`, and add broadcast call after successful message deletion with `broadcast(new ChatMessageDeleted($message->id, $chatId))->toOthers()`. `laravel-app/.env.example` was edited manually to add `BROADCAST_CONNECTION=reverb` to set the default broadcast driver, and add a complete Reverb configuration block including `REVERB_APP_ID=`, `REVERB_APP_KEY=`, `REVERB_APP_SECRET=`, `REVERB_HOST="localhost"`, `REVERB_PORT=8080`, `REVERB_SCHEME=http` for server settings, and matching Vite environment variables `VITE_REVERB_APP_KEY="${REVERB_APP_KEY}"`, `VITE_REVERB_HOST="${REVERB_HOST}"`, `VITE_REVERB_PORT="${REVERB_PORT}"`, `VITE_REVERB_SCHEME="${REVERB_SCHEME}"` to expose Reverb credentials to the frontend JavaScript build. `compose.yaml` was edited manually to add port mapping `"8080:8080"` to the `laravel-service` ports array to expose the Reverb WebSocket server running inside the Docker container on port 8080 to the host machine. `docker/laravel/supervisord.development.conf` was edited manually to add a new `[program:laravel-reverb]` section with `command=php artisan reverb:start --host=0.0.0.0 --port=8080` to start the Reverb WebSocket server, `directory=/var/www/html` for the working directory, `autostart=true` and `autorestart=true` to ensure the server runs continuously and restarts on failure, and `stdout_logfile=/dev/stdout` with `stderr_logfile=/dev/stderr` to pipe logs to the container console.
 
 ---
 
@@ -459,12 +459,12 @@ class ChatUpdated implements ShouldBroadcastNow
 
 ---
 
-### `app/Events/MessageCreated.php`
+### `app/Events/ChatMessageCreated.php`
 
-> **Generated by command, then manually edited** — create MessageCreated event class and implement ShouldBroadcastNow with private channel and ChatMessageResource payload.
+> **Generated by command, then manually edited** — create ChatMessageCreated event class and implement ShouldBroadcastNow with private channel and ChatMessageResource payload.
 
 ```bash
-php artisan make:event MessageCreated
+php artisan make:event ChatMessageCreated
 ```
 
 ```php
@@ -480,7 +480,7 @@ use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 
-class MessageCreated implements ShouldBroadcastNow
+class ChatMessageCreated implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
@@ -496,13 +496,13 @@ class MessageCreated implements ShouldBroadcastNow
     public function broadcastOn(): array
     {
         return [
-            new PrivateChannel('MessageEvent.' . $this->chatId),
+            new PrivateChannel('ChatMessageEvent.' . $this->chatId),
         ];
     }
 
     public function broadcastAs(): string
     {
-        return 'MessageCreated';
+        return 'ChatMessageCreated';
     }
 
     public function broadcastWith(): array
@@ -516,12 +516,12 @@ class MessageCreated implements ShouldBroadcastNow
 
 ---
 
-### `app/Events/MessageDeleted.php`
+### `app/Events/ChatMessageDeleted.php`
 
-> **Generated by command, then manually edited** — create MessageDeleted event class and implement ShouldBroadcastNow with private channel and message_id payload.
+> **Generated by command, then manually edited** — create ChatMessageDeleted event class and implement ShouldBroadcastNow with private channel and message_id payload.
 
 ```bash
-php artisan make:event MessageDeleted
+php artisan make:event ChatMessageDeleted
 ```
 
 ```php
@@ -535,7 +535,7 @@ use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 
-class MessageDeleted implements ShouldBroadcastNow
+class ChatMessageDeleted implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
@@ -552,13 +552,13 @@ class MessageDeleted implements ShouldBroadcastNow
     public function broadcastOn(): array
     {
         return [
-            new PrivateChannel('MessageEvent.' . $this->chatId),
+            new PrivateChannel('ChatMessageEvent.' . $this->chatId),
         ];
     }
 
     public function broadcastAs(): string
     {
-        return 'MessageDeleted';
+        return 'ChatMessageDeleted';
     }
 
     public function broadcastWith(): array
@@ -572,12 +572,12 @@ class MessageDeleted implements ShouldBroadcastNow
 
 ---
 
-### `app/Events/MessageUpdated.php`
+### `app/Events/ChatMessageUpdated.php`
 
-> **Generated by command, then manually edited** — create MessageUpdated event class and implement ShouldBroadcastNow with private channel and ChatMessageResource payload.
+> **Generated by command, then manually edited** — create ChatMessageUpdated event class and implement ShouldBroadcastNow with private channel and ChatMessageResource payload.
 
 ```bash
-php artisan make:event MessageUpdated
+php artisan make:event ChatMessageUpdated
 ```
 
 ```php
@@ -593,7 +593,7 @@ use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 
-class MessageUpdated implements ShouldBroadcastNow
+class ChatMessageUpdated implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
@@ -609,13 +609,13 @@ class MessageUpdated implements ShouldBroadcastNow
     public function broadcastOn(): array
     {
         return [
-            new PrivateChannel('MessageEvent.' . $this->chatId),
+            new PrivateChannel('ChatMessageEvent.' . $this->chatId),
         ];
     }
 
     public function broadcastAs(): string
     {
-        return 'MessageUpdated';
+        return 'ChatMessageUpdated';
     }
 
     public function broadcastWith(): array
@@ -631,7 +631,7 @@ class MessageUpdated implements ShouldBroadcastNow
 
 ### `routes/channels.php`
 
-> **Generated by command, then manually edited** — publish channel authorization file and define private channel callbacks for ChatEvent and MessageEvent.
+> **Generated by command, then manually edited** — publish channel authorization file and define private channel callbacks for ChatEvent and ChatMessageEvent.
 
 The `php artisan install:broadcasting` command from an earlier section also publishes this file.
 
@@ -645,7 +645,7 @@ Broadcast::channel('ChatEvent.{userId}', function ($user, $userId) {
     return (int) $user->id === (int) $userId;
 });
 
-Broadcast::channel('MessageEvent.{chatId}', function ($user, $chatId) {
+Broadcast::channel('ChatMessageEvent.{chatId}', function ($user, $chatId) {
     // Check if the user is a participant of the chat
     return $user->chats()->where('chats.id', $chatId)->exists();
 });
@@ -752,9 +752,9 @@ namespace App\Http\Controllers\API;
 use App\Events\ChatCreated;
 use App\Events\ChatDeleted;
 use App\Events\ChatUpdated;
-use App\Events\MessageCreated;
-use App\Events\MessageDeleted;
-use App\Events\MessageUpdated;
+use App\Events\ChatMessageCreated;
+use App\Events\ChatMessageDeleted;
+use App\Events\ChatMessageUpdated;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Chat\AddGroupChatMemberRequest;
 use App\Http\Requests\Chat\CreateGroupChatRequest;
@@ -1371,7 +1371,7 @@ class ChatController extends Controller
             'content' => $request->input('content'),
         ]);
 
-        broadcast(new MessageCreated($message, $chatId))->toOthers();
+        broadcast(new ChatMessageCreated($message, $chatId))->toOthers();
 
         return response([
             'message' => 'Message created.',
@@ -1401,7 +1401,7 @@ class ChatController extends Controller
             'content' => $request->input('content'),
         ]);
 
-        broadcast(new MessageUpdated($message, $chatId))->toOthers();
+        broadcast(new ChatMessageUpdated($message, $chatId))->toOthers();
 
         return response([
             'message' => 'Message updated.',
@@ -1428,7 +1428,7 @@ class ChatController extends Controller
 
         $message->delete();
 
-        broadcast(new MessageDeleted($message->id, $chatId))->toOthers();
+        broadcast(new ChatMessageDeleted($message->id, $chatId))->toOthers();
 
         return response([
             'message' => 'Message deleted.'
@@ -1698,11 +1698,11 @@ The `config/broadcasting.php` file sets the default broadcast driver to `reverb`
 
 ### Event Classes
 
-Each broadcast event class implements `ShouldBroadcastNow` interface which tells Laravel to broadcast the event synchronously instead of queuing it for async processing. The `broadcastOn()` method returns an array of channel objects where the event should be broadcast. For chat events (`ChatCreated`, `ChatUpdated`, `ChatDeleted`), the channel is `new PrivateChannel('ChatEvent.' . $this->userId)` which creates a user-specific private channel so each user only receives notifications for their own chats without seeing other users' chat updates. For message events (`MessageCreated`, `MessageUpdated`, `MessageDeleted`), the channel is `new PrivateChannel('MessageEvent.' . $this->chatId)` which creates a chat-specific private channel so all members of that chat receive the same message notifications in real-time. The `broadcastAs()` method defines the event name that JavaScript listeners will use (e.g., `Echo.private('ChatEvent.1').listen('ChatCreated', callback)`). The `broadcastWith()` method returns the data payload that will be sent to connected clients. For create and update events, it returns a fully loaded resource with relationships (`ChatResource` with messages and members, or `ChatMessageResource` with creator) so the frontend can immediately render the new or updated data without making additional API requests. For delete events, it returns only the ID (`chat_id` or `message_id`) since the frontend just needs to know which item to remove from the UI.
+Each broadcast event class implements `ShouldBroadcastNow` interface which tells Laravel to broadcast the event synchronously instead of queuing it for async processing. The `broadcastOn()` method returns an array of channel objects where the event should be broadcast. For chat events (`ChatCreated`, `ChatUpdated`, `ChatDeleted`), the channel is `new PrivateChannel('ChatEvent.' . $this->userId)` which creates a user-specific private channel so each user only receives notifications for their own chats without seeing other users' chat updates. For message events (`ChatMessageCreated`, `ChatMessageUpdated`, `ChatMessageDeleted`), the channel is `new PrivateChannel('ChatMessageEvent.' . $this->chatId)` which creates a chat-specific private channel so all members of that chat receive the same message notifications in real-time. The `broadcastAs()` method defines the event name that JavaScript listeners will use (e.g., `Echo.private('ChatEvent.1').listen('ChatCreated', callback)`). The `broadcastWith()` method returns the data payload that will be sent to connected clients. For create and update events, it returns a fully loaded resource with relationships (`ChatResource` with messages and members, or `ChatMessageResource` with creator) so the frontend can immediately render the new or updated data without making additional API requests. For delete events, it returns only the ID (`chat_id` or `message_id`) since the frontend just needs to know which item to remove from the UI.
 
 ### Channel Authorization
 
-The `routes/channels.php` file defines authorization callbacks for private channels. The `Broadcast::channel('ChatEvent.{userId}', ...)` callback receives the authenticated user from the Sanctum token and the `userId` route parameter from the channel name, returning `(int) $user->id === (int) $userId` to ensure users can only subscribe to their own user-specific channel and not other users' channels. The `Broadcast::channel('MessageEvent.{chatId}', ...)` callback receives the authenticated user and the `chatId` route parameter, returning `$user->chats()->where('chats.id', $chatId)->exists()` which queries the database through the `User` model's `chats()` relationship to verify the user is a member of the chat before allowing them to subscribe to that chat's message channel. This prevents unauthorized users from eavesdropping on chat conversations they are not part of. If the authorization callback returns `false` or throws an exception, Laravel responds with a 403 Forbidden status and the WebSocket client will not be able to subscribe to that channel.
+The `routes/channels.php` file defines authorization callbacks for private channels. The `Broadcast::channel('ChatEvent.{userId}', ...)` callback receives the authenticated user from the Sanctum token and the `userId` route parameter from the channel name, returning `(int) $user->id === (int) $userId` to ensure users can only subscribe to their own user-specific channel and not other users' channels. The `Broadcast::channel('ChatMessageEvent.{chatId}', ...)` callback receives the authenticated user and the `chatId` route parameter, returning `$user->chats()->where('chats.id', $chatId)->exists()` which queries the database through the `User` model's `chats()` relationship to verify the user is a member of the chat before allowing them to subscribe to that chat's message channel. This prevents unauthorized users from eavesdropping on chat conversations they are not part of. If the authorization callback returns `false` or throws an exception, Laravel responds with a 403 Forbidden status and the WebSocket client will not be able to subscribe to that channel.
 
 ### Echo JavaScript Client
 
@@ -1710,7 +1710,7 @@ The `resources/js/echo.js` file imports the `laravel-echo` package which provide
 
 ### Event Broadcasting in Controller
 
-The `ChatController` imports all six broadcast event classes and calls `broadcast(new EventClass(...))->toOthers()` after successful create, update, and delete operations. The `broadcast()` helper function dispatches the event to the broadcasting system, which serializes the event and sends it to all WebSocket clients subscribed to the event's channels. The `->toOthers()` method excludes the current user's socket connection from receiving the broadcast, preventing duplicate updates since the acting user already sees the result of their action in the HTTP response. For chat operations (`createPersonalChat`, `createGroupChat`, `updateGroupChat`, `deleteChat`), the controller loops through `$chat->members` and broadcasts the event to each member's user-specific channel `ChatEvent.{userId}`, ensuring all chat participants receive the notification regardless of which chat they are currently viewing. For message operations (`createChatMessage`, `updateChatMessage`, `deleteChatMessage`), the controller broadcasts to the chat-specific channel `MessageEvent.{chatId}`, so all users who have that chat open and are subscribed to its channel receive the message update instantly. The broadcast calls happen after database commit but before the HTTP response, ensuring the WebSocket notification is sent immediately and reaches other connected clients while the acting user is still processing the response.
+The `ChatController` imports all six broadcast event classes and calls `broadcast(new EventClass(...))->toOthers()` after successful create, update, and delete operations. The `broadcast()` helper function dispatches the event to the broadcasting system, which serializes the event and sends it to all WebSocket clients subscribed to the event's channels. The `->toOthers()` method excludes the current user's socket connection from receiving the broadcast, preventing duplicate updates since the acting user already sees the result of their action in the HTTP response. For chat operations (`createPersonalChat`, `createGroupChat`, `updateGroupChat`, `deleteChat`), the controller loops through `$chat->members` and broadcasts the event to each member's user-specific channel `ChatEvent.{userId}`, ensuring all chat participants receive the notification regardless of which chat they are currently viewing. For message operations (`createChatMessage`, `updateChatMessage`, `deleteChatMessage`), the controller broadcasts to the chat-specific channel `ChatMessageEvent.{chatId}`, so all users who have that chat open and are subscribed to its channel receive the message update instantly. The broadcast calls happen after database commit but before the HTTP response, ensuring the WebSocket notification is sent immediately and reaches other connected clients while the acting user is still processing the response.
 
 ### Docker Integration
 
@@ -1734,9 +1734,9 @@ php artisan install:broadcasting
 php artisan make:event ChatCreated
 php artisan make:event ChatDeleted
 php artisan make:event ChatUpdated
-php artisan make:event MessageCreated
-php artisan make:event MessageDeleted
-php artisan make:event MessageUpdated
+php artisan make:event ChatMessageCreated
+php artisan make:event ChatMessageDeleted
+php artisan make:event ChatMessageUpdated
 
 # Start Reverb WebSocket server (run in supervisor in production/docker)
 php artisan reverb:start --host=0.0.0.0 --port=8080

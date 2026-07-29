@@ -106,6 +106,7 @@ const isLoadingMore = ref(false);
 
 onMounted(() => {
   recentChatsStore.subscribeToChatEvents();
+  recentChatsStore.subscribeToChatMessageEvents();
   generateChats();
 
   // jQuery infinite scroll on sidebar

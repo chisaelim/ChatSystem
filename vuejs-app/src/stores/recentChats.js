@@ -1,9 +1,6 @@
 import { defineStore } from "pinia";
 import { useUserStore } from "@/stores/user";
 
-// Track subscribed chat channels (module-level, not in state)
-const subscribedChatMessageIds = new Set();
-
 export const useRecentChatsStore = defineStore("recentChats", {
   state: () => ({
     chats: [],
@@ -51,7 +48,6 @@ export const useRecentChatsStore = defineStore("recentChats", {
         } else {
           this.chats.push(chat);
         }
-        this.subscribeToChatMessageEvents(chat.id); // Subscribe to chat message events for each chat
       });
       this.sortChats();
     },
@@ -65,13 +61,11 @@ export const useRecentChatsStore = defineStore("recentChats", {
       } else {
         this.chats.push(chat);
       }
-      this.subscribeToChatMessageEvents(chat.id); // Subscribe to chat message events for each chat
       this.sortChats();
     },
     removeChat(chatId) {
       // Remove chat from store
       this.chats = this.chats.filter((c) => Number(c.id) !== Number(chatId));
-      this.unsubscribeFromChatMessageEvents(chatId);
     },
     syncMultiChatMessages(chatId, messages) {
       const chat = this.getChatById(chatId);
@@ -116,7 +110,6 @@ export const useRecentChatsStore = defineStore("recentChats", {
       const userStore = useUserStore();
       window.Echo.private(`ChatEvent.${userStore.id}`)
         .listen(".ChatCreated", async ({ chat }) => {
-          console.log("ChatCreated event received:", chat);
           this.syncChat(chat);
         })
         .listen(".ChatUpdated", async ({ chat }) => {
@@ -126,33 +119,27 @@ export const useRecentChatsStore = defineStore("recentChats", {
           this.removeChat(chat_id);
         });
     },
-    subscribeToChatMessageEvents(chatId) {
-      // Check if already subscribed
-      if (subscribedChatMessageIds.has(chatId)) {
-        return;
-      }
-
-      window.Echo.private(`MessageEvent.${chatId}`)
-        .listen(".MessageCreated", async ({ message }) => {
-          console.log("MessageCreated event received:", chatId, message);
-          this.syncChatMessage(chatId, message);
+    subscribeToChatMessageEvents() {
+      const userStore = useUserStore();
+      window.Echo.private(`ChatMessageEvent.${userStore.id}`)
+        .listen(".ChatMessageCreated", async ({ chat, message }) => {
+          if (!this.getChatById(chat.id)) {
+            this.syncChat(chat);
+          }
+          this.syncChatMessage(chat.id, message);
         })
-        .listen(".MessageUpdated", async ({ message }) => {
-          this.syncChatMessage(chatId, message);
+        .listen(".ChatMessageUpdated", async ({ chat, message }) => {
+          if (!this.getChatById(chat.id)) {
+            this.syncChat(chat);
+          }
+          this.syncChatMessage(chat.id, message);
         })
-        .listen(".MessageDeleted", async ({ message_id }) => {
-          this.removeChatMessage(chatId, message_id);
+        .listen(".ChatMessageDeleted", async ({ chat, message_id }) => {
+          if (!this.getChatById(chat.id)) {
+            this.syncChat(chat);
+          }
+          this.removeChatMessage(chat.id, message_id);
         });
-
-      // Mark as subscribed
-      subscribedChatMessageIds.add(chatId);
-    },
-
-    unsubscribeFromChatMessageEvents(chatId) {
-      if (subscribedChatMessageIds.has(chatId)) {
-        window.Echo.leave(`MessageEvent.${chatId}`);
-        subscribedChatMessageIds.delete(chatId);
-      }
     },
   },
 });

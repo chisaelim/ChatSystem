@@ -5,9 +5,9 @@ namespace App\Http\Controllers\API;
 use App\Events\ChatCreated;
 use App\Events\ChatDeleted;
 use App\Events\ChatUpdated;
-use App\Events\MessageCreated;
-use App\Events\MessageDeleted;
-use App\Events\MessageUpdated;
+use App\Events\ChatMessageCreated;
+use App\Events\ChatMessageDeleted;
+use App\Events\ChatMessageUpdated;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Chat\AddGroupChatMemberRequest;
 use App\Http\Requests\Chat\CreateGroupChatRequest;
@@ -624,8 +624,9 @@ class ChatController extends Controller
             'content' => $request->input('content'),
         ]);
 
-        broadcast(new MessageCreated($message, $chatId))->toOthers();
-
+        foreach ($chat->members as $member) {
+            broadcast(new ChatMessageCreated($message, $chat, $member->user_id))->toOthers();
+        }
         return response([
             'message' => 'Message created.',
             'chat_message' => new ChatMessageResource($message->load('creator'))
@@ -654,7 +655,9 @@ class ChatController extends Controller
             'content' => $request->input('content'),
         ]);
 
-        broadcast(new MessageUpdated($message, $chatId))->toOthers();
+        foreach ($chat->members as $member) {
+            broadcast(new ChatMessageUpdated($message, $chat, $member->user_id))->toOthers();
+        }
 
         return response([
             'message' => 'Message updated.',
@@ -681,7 +684,9 @@ class ChatController extends Controller
 
         $message->delete();
 
-        broadcast(new MessageDeleted($message->id, $chatId))->toOthers();
+        foreach ($chat->members as $member) {
+            broadcast(new ChatMessageDeleted($message->id, $chat, $member->user_id))->toOthers();
+        }
 
         return response([
             'message' => 'Message deleted.'
