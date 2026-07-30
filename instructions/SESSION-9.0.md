@@ -1,3 +1,148 @@
+# ChatSystem — Backend voice message creation and file serving with request validation and file storage
+
+## Table of Contents
+
+- [What Changed in Session 9.0](#what-changed-in-session-90)
+- [File Contents](#file-contents)
+  - [laravel-app/app/Http/Requests/Chat/CreateVoiceChatMessageRequest.php](#laravel-appapphttprequestschatcreatevoicechatmessagerequestphp)
+  - [laravel-app/app/Models/ChatMessage.php](#laravel-appappmodelschatmessagephp)
+  - [laravel-app/app/Http/Controllers/API/ChatController.php](#laravel-appapphttpcontrollersapichatcontrollerphp)
+  - [laravel-app/routes/api.php](#laravel-approutesapiphp)
+- [How Each File Works](#how-each-file-works)
+  - [Voice Message Request Validation](#voice-message-request-validation)
+  - [File Path Attribute Accessor](#file-path-attribute-accessor)
+  - [Voice Message Creation and File Serving](#voice-message-creation-and-file-serving)
+  - [API Routes for Voice Messages](#api-routes-for-voice-messages)
+- [Common Commands](#common-commands)
+
+---
+
+## What Changed in Session 9.0
+
+Session 8.4 implemented the frontend WebSocket integration to consume real-time event broadcasts from the Laravel Reverb backend, enabling instant chat and message updates across all connected clients by installing laravel-echo and pusher-js packages, configuring Echo with custom Sanctum-aware channel authorization, and adding WebSocket event listener subscriptions in the Pinia store to sync chat and message updates in real-time. Session 9.0 implements the backend voice message functionality that allows users to record and upload voice messages to chats with file storage and retrieval, featuring a new `CreateVoiceChatMessageRequest` validation class that validates the uploaded voice file must be a webm format and not exceed 10MB, adds `createVoiceChatMessage()` controller method that stores the voice file with a UUID filename in the `chat-files/{chatId}` directory, creates a ChatMessage database record with type `voice` and file metadata, broadcasts the MessageCreated event to WebSocket subscribers, and returns the created message; adds `getChatFile()` controller method that authorizes the requesting user is a chat member and serves the file from local storage with the correct MIME type, adds a `filePath()` attribute accessor to the ChatMessage model that generates a route URL to the file endpoint instead of storing the raw file path, ensuring clients can retrieve files through the API endpoint rather than direct filesystem access, and updates the API routes to register the two new endpoints `/chats/{chatId}/messages/create-voice` (POST) and `/chats/{chatId}/files/{filename}` (GET). The session demonstrates the complete voice message workflow: validation on upload, secure file storage with UUID filenames, model attribute transformations to generate URLs, authorization checks on retrieval, and real-time event broadcasting to connected WebSocket clients.
+
+| Area | Session 8.4 | Session 9.0 |
+|---|---|---|
+| Voice message support | Not implemented | CreateVoiceChatMessageRequest validation class added |
+| Voice file upload | Not supported | createVoiceChatMessage() method uploads and stores files |
+| File storage location | N/A | Files stored in storage/app/chat-files/{chatId}/ |
+| File path handling | N/A | filePath() accessor generates route URLs instead of raw paths |
+| File retrieval | Not supported | getChatFile() method serves files with authorization |
+| Voice message routes | Not registered | POST /chats/{chatId}/messages/create-voice and GET /chats/{chatId}/files/{filename} added |
+| Message type support | Text only | Text and voice message types supported |
+| WebSocket events | Real-time listeners active | Events broadcast for voice messages too |
+
+`laravel-app/app/Http/Requests/Chat/CreateVoiceChatMessageRequest.php` was created manually to define validation rules for voice message file uploads, requiring the `voice` form field to be present, be a file, have webm MIME type, and not exceed 10240 KB (10 MB). `laravel-app/app/Models/ChatMessage.php` was edited manually to add a `filePath()` protected attribute accessor using the Eloquent Attribute API that transforms the raw `file_path` database column into a generated route URL by calling `route('chat.file', ['chatId' => $this->chat_id, 'filename' => basename(...)])`, allowing the API to return file URLs instead of raw paths and enabling centralized file access control through the endpoint. `laravel-app/app/Http/Controllers/API/ChatController.php` was edited manually to add two new public methods: `createVoiceChatMessage()` that accepts the CreateVoiceChatMessageRequest and chatId route parameter, verifies the user is a chat member, stores the uploaded file with a UUID filename to `chat-files/{chatId}`, creates a ChatMessage record with type `voice` and file metadata, broadcasts the MessageCreated event, and returns a 201 response with the created message, and `getChatFile()` that accepts a Request, chatId, and filename, verifies the user is a chat member, confirms the file exists on disk, and returns it as a download with correct MIME type or 404 if not found. `laravel-app/routes/api.php` was edited manually to register two new routes within the chats route group: `Route::post('/{chatId}/messages/create-voice', [ChatController::class, 'createVoiceChatMessage'])` to create voice messages and `Route::get('/{chatId}/files/{filename}', [ChatController::class, 'getChatFile'])->name('chat.file')` to retrieve files and generate file URLs.
+
+---
+
+## File Contents
+
+The labels below tell you what action to take:
+- **Generated by command** — scaffold generator or CLI command created the file fully; command block only.
+- **Generated by command, then manually edited** — CLI command created a stub; developer replaces the body with a command block, then file content block.
+- **Edited manually** — file already existed; paste the file content block to replace its contents.
+- **Created manually** — file does not exist and no CLI command creates it; paste the file content block only.
+
+Follow the sections in order from top to bottom.
+
+---
+
+### `laravel-app/app/Http/Requests/Chat/CreateVoiceChatMessageRequest.php`
+
+> **Created manually** — define validation rules for voice message file uploads requiring webm format and maximum file size.
+
+```php
+<?php
+
+namespace App\Http\Requests\Chat;
+
+use Illuminate\Contracts\Validation\ValidationRule;
+use Illuminate\Foundation\Http\FormRequest;
+
+class CreateVoiceChatMessageRequest extends FormRequest
+{
+    /**
+     * Determine if the user is authorized to make this request.
+     */
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    /**
+     * Get the validation rules that apply to the request.
+     *
+     * @return array<string, ValidationRule|array<mixed>|string>
+     */
+    public function rules(): array
+    {
+        return [
+            'voice' => 'required|file|mimes:webm|max:10240',
+        ];
+    }
+}
+```
+
+---
+
+### `laravel-app/app/Models/ChatMessage.php`
+
+> **Edited manually** — add filePath() attribute accessor to transform raw file paths into generated route URLs for secure file access.
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+#[Fillable(['chat_id', 'creator_id', 'type', 'content', 'file_name', 'file_path', 'mime_type', 'seen_at'])]
+class ChatMessage extends Model
+{
+    use SoftDeletes;
+
+    protected $table = 'chat_messages';
+    protected $primaryKey = 'id';
+
+    protected function casts(): array
+    {
+        return [
+            'type' => 'string',
+            'seen_at' => 'datetime',
+        ];
+    }
+
+    protected function filePath(): Attribute
+    {
+        return Attribute::make(
+            get: fn() => $this->getRawOriginal('file_path') ? route('chat.file', ['chatId' => $this->chat_id, 'filename' => basename($this->getRawOriginal('file_path'))]) : null,
+        );
+    }
+
+    public function chat(): BelongsTo
+    {
+        return $this->belongsTo(Chat::class);
+    }
+
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'creator_id');
+    }
+}
+```
+
+---
+
+### `laravel-app/app/Http/Controllers/API/ChatController.php`
+
+> **Edited manually** — add createVoiceChatMessage() and getChatFile() methods to handle voice message uploads and file downloads with authorization and event broadcasting.
+
+```php
 <?php
 
 namespace App\Http\Controllers\API;
@@ -766,3 +911,129 @@ class ChatController extends Controller
         return Storage::disk('local')->response($path);
     }
 }
+```
+
+---
+
+### `laravel-app/routes/api.php`
+
+> **Edited manually** — register two new API routes for voice message creation and file retrieval endpoints.
+
+```php
+<?php
+
+use App\Http\Controllers\API\AuthController;
+use App\Http\Controllers\API\BackupController;
+use App\Http\Controllers\API\GoogleOAuthController;
+use App\Http\Controllers\API\UserController;
+use App\Http\Controllers\API\ChatController;
+use Illuminate\Support\Facades\Route;
+
+Route::post('/signup', [AuthController::class, 'signup']);
+Route::post('/signin', [AuthController::class, 'signin']);
+Route::get('/verify/email/{id}/{hash}', [AuthController::class, 'verifyEmail'])
+    ->middleware('signed')
+    ->name('verify.email');
+Route::post('/send/verification-email', [AuthController::class, 'sendVerificationEmail']);
+Route::post('/send/reset-password-email', [AuthController::class, 'sendResetPasswordEmail']);
+Route::post('/set/new-password', [AuthController::class, 'setNewPassword'])->name('set.new-password');
+
+Route::prefix('google')->group(function () {
+    Route::get('/oauth/redirect', [GoogleOAuthController::class, 'googleOAuthRedirect']);
+    Route::get('/oauth/callback', [GoogleOAuthController::class, 'googleOAuthCallback']);
+    Route::post('/oauth/exchange/token', [GoogleOAuthController::class, 'googleOAuthExchangeToken'])->middleware('auth:sanctum');
+});
+
+Route::middleware(['auth:sanctum', 'enabled'])->group(function () {
+    Route::post('/signout', [AuthController::class, 'signout']);
+    Route::get('/verify', [AuthController::class, 'verify']);
+    Route::put('/create/password', [AuthController::class, 'createPassword']);
+    Route::put('/change/password', [AuthController::class, 'changePassword']);
+    Route::put('/update/profile-image', [AuthController::class, 'updateProfileImage']);
+    Route::delete('/delete/profile-image', [AuthController::class, 'deleteProfileImage']);
+
+    Route::middleware('admin')->prefix('manage')->group(function () {
+        Route::prefix('users')->group(function () {
+            Route::get('/', [UserController::class, 'getUsers']);
+            Route::get('/read/{id}', [UserController::class, 'readUser']);
+            Route::post('/create', [UserController::class, 'createUser']);
+            Route::put('/update/{id}', [UserController::class, 'updateUser']);
+            Route::patch('/toggle-status/{id}', [UserController::class, 'toggleUserStatus']);
+            Route::delete('/delete/{id}', [UserController::class, 'deleteUser']);
+        });
+        Route::prefix('backups')->group(function () {
+            Route::get('/', [BackupController::class, 'getBackups']);
+            Route::post('/create', [BackupController::class, 'createBackup']);
+            Route::get('/download/{filename}', [BackupController::class, 'downloadBackup']);
+            Route::delete('/delete/{filename}', [BackupController::class, 'deleteBackup']);
+        });
+    });
+
+    Route::prefix('chats')->group(function () {
+        Route::get('/', [ChatController::class, 'getChats']);
+        Route::get('/users', [ChatController::class, 'getChatUsers']);
+        // Chat creation and management
+        Route::post('/personal/create', [ChatController::class, 'createPersonalChat']);
+        Route::post('/group/create', [ChatController::class, 'createGroupChat']);
+        Route::get('/read/{chatId}', [ChatController::class, 'readChat']);
+        Route::delete('/delete/{chatId}', [ChatController::class, 'deleteChat']);
+        Route::put('/group/update/{chatId}', [ChatController::class, 'updateGroupChat']);
+        Route::delete('/group/leave/{chatId}', [ChatController::class, 'leaveGroupChat']);
+
+        Route::get('/group/{chatId}/members', [ChatController::class, 'getGroupChatMembers']);
+        Route::post('/group/{chatId}/members/add', [ChatController::class, 'addGroupChatMember']);
+        Route::delete('/group/{chatId}/members/remove/{memberId}', [ChatController::class, 'removeGroupChatMember']);
+
+        Route::get('/{chatId}/messages', [ChatController::class, 'getChatMessages']);
+        Route::post('/{chatId}/messages/create', [ChatController::class, 'createChatMessage']);
+        Route::patch('/{chatId}/messages/update/{messageId}', [ChatController::class, 'updateChatMessage']);
+        Route::delete('/{chatId}/messages/delete/{messageId}', [ChatController::class, 'deleteChatMessage']);
+        Route::post('/{chatId}/messages/seen-all', [ChatController::class, 'markAllChatMessagesAsSeen']);
+        Route::post('/{chatId}/messages/create-voice', [ChatController::class, 'createVoiceChatMessage']);
+        Route::get('/{chatId}/files/{filename}', [ChatController::class, 'getChatFile'])->name('chat.file');
+    });
+});
+```
+
+---
+
+## How Each File Works
+
+### Voice Message Request Validation
+
+The `CreateVoiceChatMessageRequest` class uses Laravel's form request validation to ensure voice file uploads meet security and format requirements. It validates that a `voice` form field is present, is a file type, has the webm MIME type (the standard format for Web Audio API recordings), and does not exceed 10 MB (10240 KB). The request's `authorize()` method returns `true` to allow all authenticated users to upload voice messages—actual authorization is checked in the controller method by verifying chat membership.
+
+### File Path Attribute Accessor
+
+The `filePath()` accessor in ChatMessage uses Eloquent's Attribute API to transform the database value on retrieval. Instead of returning the raw filesystem path `"chat-files/123/uuid.webm"`, it generates a full API route URL by calling the `route()` helper with the `chat.file` route name and parameters `chatId` and `filename`. The getter uses `getRawOriginal()` to access the stored path without triggering the accessor recursively, extracts the filename with `basename()`, and returns `null` if no file path is stored (for text messages). This pattern keeps file access centralized at the `/api/chats/{chatId}/files/{filename}` endpoint, allowing the API to enforce authorization and serve files with correct MIME types instead of exposing raw filesystem paths to the client.
+
+### Voice Message Creation and File Serving
+
+The `createVoiceChatMessage()` method handles voice message creation by first verifying the user is a member of the target chat using a whereHas query. It then retrieves the uploaded file from the request, generates a UUID filename with the guessed file extension (or defaults to webm), and stores the file in the `storage/app/chat-files/{chatId}/` directory using Laravel's `storeAs()` method, which returns the relative path. A new ChatMessage record is created with type `voice`, the file metadata (original filename, storage path, and MIME type), and a placeholder content message. The MessageCreated event is broadcast to all other WebSocket subscribers, and a 201 response is returned with the created message resource.
+
+The `getChatFile()` method serves files by verifying the requesting user is a chat member, confirming the file exists on local disk, and returning it as a streaming response with correct MIME type. If the file does not exist, `abort_unless()` triggers a 404 error. This authorization check ensures users can only access files from chats they belong to.
+
+### API Routes for Voice Messages
+
+Two new routes register the voice message endpoints within the chats route group under the `auth:sanctum` and `enabled` middleware stack:
+- `POST /api/chats/{chatId}/messages/create-voice` dispatches to `createVoiceChatMessage()` to upload and store a new voice message.
+- `GET /api/chats/{chatId}/files/{filename}` dispatches to `getChatFile()` to retrieve and serve a stored file; the route is named `chat.file` so the ChatMessage model's filePath() accessor can generate URLs to this endpoint.
+
+---
+
+## Common Commands
+
+```bash
+# Create a new form request class for voice message validation
+php artisan make:request Chat/CreateVoiceChatMessageRequest
+
+# Test voice message upload endpoint
+curl -X POST http://localhost:8000/api/chats/1/messages/create-voice \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -F "voice=@path/to/recording.webm"
+
+# Test file retrieval endpoint
+curl -X GET http://localhost:8000/api/chats/1/files/uuid.webm \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -o downloaded.webm
+```
