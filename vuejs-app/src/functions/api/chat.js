@@ -107,3 +107,12 @@ export async function apiCreateVoiceChatMessage(chatId, voiceBlob) {
     formData,
   );
 }
+
+export async function apiCreateImageChatMessage(chatId, imageFile) {
+  const formData = new FormData();
+  formData.append("image", imageFile);
+  return await axios.post(
+    APP_API_URL + `/chats/${chatId}/messages/create-image`,
+    formData,
+  );
+}
