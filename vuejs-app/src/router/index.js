@@ -4,6 +4,7 @@ import Signin from '@/components/auth/Signin.vue';
 import Signout from '@/components/auth/Signout.vue';
 import Signup from '@/components/auth/Signup.vue';
 import VerifyEmail from '@/components/auth/VerifyEmail.vue';
+import OAuthCallback from '@/components/oauth/OAuthCallback.vue';
 import Dashboard from '@/components/pages/Dashboard.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 
@@ -45,6 +46,12 @@ const router = createRouter({
       path: '/set-new-password',
       name: 'auth.set-new-password',
       component: SetNewPassword,
+      meta: { guarded: false },
+    },
+    {
+      path: '/oauth/callback',
+      name: 'auth.oauth.callback',
+      component: OAuthCallback,
       meta: { guarded: false },
     },
     {

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\API\AuthController;
+use App\Http\Controllers\API\OAuthController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/signup', [AuthController::class, 'signup']);
@@ -11,6 +12,10 @@ Route::get('/verify/email/{id}/{hash}', [AuthController::class, 'verifyEmail'])
 Route::post('/send/verification-email', [AuthController::class, 'sendVerificationEmail']);
 Route::post('/send/reset-password-email', [AuthController::class, 'sendResetPasswordEmail']);
 Route::post('/set/new-password', [AuthController::class, 'setNewPassword'])->name('set.new-password');
+
+Route::get('/{driver}/oauth/redirect', [OAuthController::class, 'oAuthRedirect']);
+Route::get('/{driver}/oauth/callback', [OAuthController::class, 'oAuthCallback']);
+Route::post('/oauth/exchange/token', [OAuthController::class, 'oAuthExchangeToken'])->middleware('auth:sanctum');
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/signout', [AuthController::class, 'signout']);
